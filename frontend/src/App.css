@@ -41,6 +41,7 @@
   background-color: rgb(15, 15, 18);
   border-top: 1px solid rgb(255, 255, 255);
   border-right: 1px solid rgb(255, 255, 255);
+  z-index: 9
 }
 
 .App .workSpace
@@ -60,6 +61,15 @@
   transform: scale(1);
   transform-origin: 0 0;
   will-change: transform;
+  mix-blend-mode: difference;
+  pointer-events: none;
+}
+
+#pad
+{
+  mix-blend-mode: normal;
+  pointer-events: all;
+  background-color: rgb(20, 20, 25);
 }
 
 .App #tools
@@ -81,6 +91,7 @@
   transform: translateY(-50%);
   top: 50%;
   background-position: center center;
+  background-blend-mode: difference;
   background-repeat: no-repeat;
   height: 35px;
   margin-right: 10px;
@@ -91,6 +102,34 @@
 #gridButton
 {
   background-image: url("../public/grid.png");
+}
+
+#drawButton
+{
+  background-image: url("../public/draw.png");
+}
+
+#undoButton
+{
+  background-image: url("../public/undo.png");
+}
+
+#redoButton
+{
+  background-image: url("../public/redo.png");
+}
+
+#clearButton
+{
+  background-image: url("../public/clear.png");
+  transition: opacity 0.3s;
+  opacity: 0;
+}
+
+#clearButton.active
+{
+  background-image: url("../public/clear.png");
+  opacity: 1;
 }
 
 #scaleRange
