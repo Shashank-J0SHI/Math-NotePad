@@ -61,6 +61,7 @@ function App() {
       event.preventDefault()
       if (isWriting)
       {
+        setClear(false);
         pointArray.push(getWriteCoordinates(event))
       }
     }
@@ -69,7 +70,6 @@ function App() {
     {
       event.preventDefault()
       isWriting = false;
-      setClear(false);
       setTimeout(() => {
         clearInterval(interval)
       }, 17)
