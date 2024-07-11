@@ -1,11 +1,19 @@
 import './App.css';
 import { useEffect, useRef, useState } from 'react';
 
+var undoList = [];
+var redoList = [];
+var parr = [];
+
 function App() {
   const [gridState, setGridState] = useState(true);
   const [drawState, setDrawState] = useState(true);
   const [scale, setScale] = useState(1);
   const [isClear, setClear] = useState(true);
+  const [penSize, setPenSize] = useState(10)
+  const [Undos, setUndos] = useState(false)
+  const [Redos, setRedos] = useState(false)
+
   const grid = useRef(0);
   const scaleRange = useRef(0);
   const gridButton = useRef(0);
@@ -16,6 +24,8 @@ function App() {
   const pad = useRef(0);
   const workSpace = useRef(0);
   const clearButton = useRef(0);
+  const undoButton = useRef(0);
+  const redoButton = useRef(0);
 
   var pen_color = "white";
   var isGrid = false;
@@ -41,19 +51,23 @@ function App() {
     {
       event.preventDefault()
       isWriting = true
+      setClear(false);
 
-      padContext.lineWidth = 10;
-      padContext.strokeStyle = "white";
-      padContext.shadowColor = "white";
+      padContext.lineWidth = penSize;
+      padContext.strokeStyle = pen_color;
+      padContext.shadowColor = pen_color;
       padContext.shadowBlur = 2;
       padContext.lineJoin = "round";
       padContext.lineCap = "round";
     
       padContext.beginPath()
-      pointArray.push(getWriteCoordinates(event))
+      let temp = getWriteCoordinates(event)
+      pointArray.push(temp)
+      parr.push(temp)
       padContext.moveTo(pointArray[0].x, pointArray[0].y)
 
       interval = setInterval(render, 16)
+      event.stopImmediatePropagation();
     }
 
     function writing(event)
@@ -61,18 +75,29 @@ function App() {
       event.preventDefault()
       if (isWriting)
       {
-        setClear(false);
-        pointArray.push(getWriteCoordinates(event))
+        let temp = getWriteCoordinates(event)
+        pointArray.push(temp)
+        parr.push(temp)
       }
+      event.stopImmediatePropagation();
     }
 
     function writeEnd(event)
     {
-      event.preventDefault()
-      isWriting = false;
-      setTimeout(() => {
-        clearInterval(interval)
-      }, 17)
+      if (isWriting)
+      {
+        event.preventDefault()
+        isWriting = false;
+        setTimeout(() => {
+          clearInterval(interval)
+        }, 17)
+        
+        undoList.push(parr)
+        redoList.length = 0
+        parr = []
+        setUndos(true)
+      }
+      event.stopImmediatePropagation();
     }
 
     function render()
@@ -89,12 +114,12 @@ function App() {
     function drawGrid(){
       context.lineWidth = 1;
       
-      for (var x = 50; x <= 2000; x += 50) {
+      for (let x = 50; x <= 2000; x += 50) {
           context.moveTo(x, 0);
           context.lineTo(x, 2000);
       }
 
-      for (var x = 50; x <= 2000; x += 50) {
+      for (let x = 50; x <= 2000; x += 50) {
           context.moveTo(0, x);
           context.lineTo(2000, x);
       }
@@ -148,6 +173,14 @@ function App() {
     }
   }, [drawState])
 
+  useEffect(() => {
+    (Undos) ? undoButton.current.classList.add("active") : undoButton.current.classList.remove("active")
+  }, [Undos])
+
+  useEffect(() => {
+    (Redos) ? redoButton.current.classList.add("active") : redoButton.current.classList.remove("active")
+  }, [Redos])
+
   function gridToggle()
   {
     setGridState(!gridState);
@@ -174,8 +207,10 @@ function App() {
   function clear()
   {
     const ctx = pad.current.getContext("2d");
-    ctx.clearRect(0, 0, 2000, 2000)
     setClear(true)
+    ctx.clearRect(0, 0, 2000, 2000)
+    undoList.push(0)
+    redoList.length = 0
   }
 
   function rangeUpdate()
@@ -193,8 +228,94 @@ function App() {
     const s = 0.5 + (range.current.value / 100)
     const canvasX = ((clientX - ws.offsetLeft + ws.scrollLeft) / s);
     const canvasY = ((clientY - ws.offsetTop + ws.scrollTop) / s);
-    console.log(s)
     return { x: canvasX, y: canvasY };
+  }
+
+  function undo()
+  {
+    jumpState(undoList, redoList)
+    setRedos(true)
+
+    if (!undoList.length)
+    {
+      setUndos(false)
+    }
+  }
+
+  function redo()
+  {
+    jumpState(redoList, undoList)
+    setUndos(true)
+
+    if (!redoList.length)
+    {
+      setRedos(false)
+    }
+  }
+
+  function jumpState(from, to)
+  {
+    if (from.length > 0)
+    {
+      let data = from.pop()
+
+      to.push(data)
+      Redraw()
+    }
+  }
+
+  function Redraw()
+  {
+    let ctx = pad.current.getContext("2d")
+    ctx.clearRect(0, 0, 2000, 2000)
+
+    ctx.lineWidth = penSize + 2;
+    ctx.strokeStyle = pen_color;
+    ctx.shadowColor = pen_color;
+    ctx.shadowBlur = 2;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    if (undoList.length)
+    {
+      let empty = true;
+
+      for (let x = undoList.length - 1; x >= 0; x--)
+      {
+        let temp = undoList[x]
+
+        if (temp)
+        {
+          empty = false
+          setClear(false)
+
+          ctx.beginPath()
+          ctx.moveTo(temp[0].x, temp[0].y)
+    
+          while (temp.length > 0)
+          {
+            ctx.lineTo(temp[0].x, temp[0].y)
+            temp = temp.slice(1)
+          }
+    
+          ctx.stroke()
+        }
+        else
+        {
+          break;
+        }
+      }
+
+      if (empty)
+      {
+        setClear(true)
+      }
+
+    }
+    else
+    {
+      setClear(true)
+    }
   }
 
   return (
@@ -203,8 +324,8 @@ function App() {
         <h1>Math <span>NotePad</span></h1>
         <div id="tools">
           <div className="Button" id="clearButton" ref={clearButton} onClick={clear}></div>
-          <div className="Button" id="undoButton"></div>
-          <div className="Button" id="redoButton"></div>
+          <div className="Button" id="undoButton" ref={undoButton} onClick={undo}></div>
+          <div className="Button" id="redoButton" ref={redoButton} onClick={redo}></div>
           <div className="Button" id="drawButton" ref={drawButton} onClick={drawToggle}></div>
           <div className="Button" id="gridButton" ref={gridButton} onClick={gridToggle}></div>
           <div className="Button" id="scaleRange" ref={scaleRange} onClick={scaleToggle}>
