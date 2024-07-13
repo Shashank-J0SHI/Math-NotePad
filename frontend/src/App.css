@@ -207,3 +207,9 @@
   padding: 5px 0;
   margin: 0 0;
 }
+
+#hidden
+{
+  visibility: hidden;
+  pointer-events: none;
+}

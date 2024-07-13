@@ -10,7 +10,7 @@ function App() {
   const [drawState, setDrawState] = useState(true);
   const [scale, setScale] = useState(1);
   const [isClear, setClear] = useState(true);
-  const [penSize, setPenSize] = useState(10)
+  const [penSize, setPenSize] = useState(8)
   const [Undos, setUndos] = useState(false)
   const [Redos, setRedos] = useState(false)
 
@@ -26,6 +26,7 @@ function App() {
   const clearButton = useRef(0);
   const undoButton = useRef(0);
   const redoButton = useRef(0);
+  const hiddenCanvas = useRef(0);
 
   var pen_color = "white";
   var isGrid = false;
@@ -37,6 +38,10 @@ function App() {
     var pointArray = [];
     var interval = null;
     var isWriting = false;
+    var maxX = 0;
+    var maxY = 0;
+    var minX = 0;
+    var minY = 0;
 
     pad.current.addEventListener('mousedown', writeStart);
     pad.current.addEventListener('mousemove', writing);
@@ -51,7 +56,6 @@ function App() {
     {
       event.preventDefault()
       isWriting = true
-      setClear(false);
 
       padContext.lineWidth = penSize;
       padContext.strokeStyle = pen_color;
@@ -61,7 +65,10 @@ function App() {
       padContext.lineCap = "round";
     
       padContext.beginPath()
+
       let temp = getWriteCoordinates(event)
+      maxX = minX = temp.x;
+      maxY = minY = temp.y
       pointArray.push(temp)
       parr.push(temp)
       padContext.moveTo(pointArray[0].x, pointArray[0].y)
@@ -76,6 +83,27 @@ function App() {
       if (isWriting)
       {
         let temp = getWriteCoordinates(event)
+
+        if (temp.x > maxX)
+        {
+          maxX = temp.x
+        }
+
+        if (temp.x < minX)
+        {
+          minX = temp.x
+        }
+
+        if (temp.y > maxY)
+        {
+          maxY = temp.y
+        }
+
+        if (temp.y < minY)
+        {
+          minY = temp.y
+        }
+
         pointArray.push(temp)
         parr.push(temp)
       }
@@ -94,8 +122,10 @@ function App() {
         
         undoList.push(parr)
         redoList.length = 0
+        ask(parr, maxX, minX, maxY, minY)
         parr = []
-        setUndos(true)
+        setClear(false);
+        setUndos(true);
       }
       event.stopImmediatePropagation();
     }
@@ -211,6 +241,7 @@ function App() {
     ctx.clearRect(0, 0, 2000, 2000)
     undoList.push(0)
     redoList.length = 0
+    setRedos(false)
   }
 
   function rangeUpdate()
@@ -318,6 +349,46 @@ function App() {
     }
   }
 
+  function ask(points, maxX, minX, maxY, minY)
+  {
+    const temp = penSize * 2
+
+    const ctx = hiddenCanvas.current.getContext("2d")
+    hiddenCanvas.current.height = maxY - minY + temp
+    hiddenCanvas.current.width = maxX - minX + temp
+
+    ctx.lineWidth = penSize + 2;
+    ctx.strokeStyle = pen_color;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    
+    ctx.beginPath()
+    ctx.moveTo(points[0].x - minX + penSize, points[0].y - minY + penSize)
+    
+    while (points.length > 0)
+    {
+      ctx.lineTo(points[0].x - minX + penSize, points[0].y - minY + penSize)
+      points = points.slice(1)
+    }
+
+    ctx.stroke()
+
+    let body = {
+      "content" : hiddenCanvas.current.toDataURL("image/jpeg")
+    }
+
+    const options = {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    }
+
+    fetch("http://127.0.0.1:5000/recognise", options).then((response) => response.json()).then((data) => {console.log(data)})
+  }
+
   return (
     <div className="App">
       <header>
@@ -345,6 +416,7 @@ function App() {
       <div className='workSpace' ref={workSpace}>
         <canvas ref={pad} id="pad" width="2000" height="2000"></canvas>
         <canvas ref={grid} width="2000" height="2000"></canvas>
+        <canvas ref={hiddenCanvas} id="hidden"></canvas>
       </div>
     </div>
   );
