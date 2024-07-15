@@ -70,6 +70,11 @@
   background-color: rgb(20, 20, 25);
 }
 
+#boundBoxCanvas
+{
+  pointer-events: none;
+}
+
 .App #tools
 {
   position: absolute;

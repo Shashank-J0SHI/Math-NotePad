@@ -1,11 +1,193 @@
 import './App.css';
 import { useEffect, useRef, useState } from 'react';
 
-var undoList = [];
-var redoList = [];
-var parr = [];
+let undoList = [];
+let redoList = [];
+let eqns = [];
+let invalidChars = [];
+let parr = [];
+let zeroPos= [0];
+let safePos = 0;
+
+function isOverlapped(topLeftA, bottomRightA, topLeftB, bottomRightB)
+{
+  let overA = null
+  let overB = null
+  let areaA = (bottomRightA.x - topLeftA.x) * (bottomRightA.y - topLeftA.y)
+  let areaB = (bottomRightB.x - topLeftB.x) * (bottomRightB.y - topLeftB.y)
+
+  if (bottomRightA.x <= topLeftB.x || bottomRightA.y <= topLeftB.y)
+  {
+    return 0;
+  }
+
+  if (topLeftA.x >= bottomRightB.x || topLeftA.y >= bottomRightB.y)
+  {
+    return 0;
+  }
+
+  if (bottomRightA.x <= bottomRightB.x)
+  {
+    overB = bottomRightA
+  }
+  else
+  {
+    overB = bottomRightB
+  }
+
+  if (topLeftA.x <= topLeftB.x)
+  {
+    overA = topLeftB
+  }
+  else
+  {
+    overA = topLeftA
+  }
+
+  let areaO = (overB.x - overA.x) * (overB.y - overA.y)
+
+  if (areaO / areaA > areaO / areaB)
+  {
+    var result = areaO / areaA
+  }
+  else
+  {
+    result = areaO / areaB
+  }
+
+  return result;
+}
 
 function App() {
+  class character 
+  {
+    constructor(topLeft, bottomRight, points)
+    {
+      this.topLeft = topLeft
+      this.bottomRight = bottomRight
+      
+      let a = bottomRight.x - topLeft.x
+      let b = bottomRight.y - topLeft.y
+      this.diagonal = Math.sqrt(a*a + b*b) * 0.8
+      this.center = {x: (bottomRight.x + topLeft.x) / 2, y: (bottomRight.y + topLeft.y) / 2}
+      this.points = points
+      this.index = null
+      this.value = null
+      this.next = null
+      this.previous = null
+      this.prefix = null
+    }
+
+    setValue(data)
+    {
+      this.value = data
+    }
+
+    traverse(string)
+    {
+      if (this.value === null)
+      {
+        boundBox("red", this.topLeft, this.bottomRight);
+      }
+      else if (this.next === null && this.previous === null)
+      {
+        boundBox("yellow", this.topLeft, this.bottomRight);
+      }
+
+      if (this.prefix !== null)
+      {
+        string += this.prefix
+      }
+
+      string = string + this.value
+      
+      if (this.next !== null)
+      {
+        this.next.traverse(string)
+      }
+      else
+      {
+        console.log(string)
+      }
+    }
+
+    findRelative()
+    {
+      for (let i = undoList.length - 1; (i >= zeroPos[safePos]) && (undoList[i] !== 0); i--)
+      {
+        if (undoList[i] !== this && (!invalidChars.includes(undoList[i])))
+        {
+          let a = undoList[i].center.x - this.center.x  
+          let b = undoList[i].center.y - this.center.y
+          let distance = Math.sqrt(a**2 + b**2)
+          let opercent = isOverlapped(this.topLeft, this.bottomRight, undoList[i].topLeft, undoList[i].bottomRight)
+
+          if ((distance < this.diagonal || distance < undoList[i].diagonal) && (opercent < 0.35) && (undoList[i].next === null || undoList[i].previous === null))
+          {
+            let angle = Math.atan2(b, a)
+
+            if (Math.abs(angle) > 2.82)
+            {
+              if (this.diagonal > 0.5 * undoList[i].diagonal && this.diagonal < 1.5 * undoList[i].diagonal)
+              {
+                if (undoList[i].next === null)
+                {
+                  this.previous = undoList[i]
+                  undoList[i].next = this
+                  break;
+                }
+              }
+            }
+            else if (Math.abs(angle) < 0.314)
+            {
+              if (this.diagonal > 0.5 * undoList[i].diagonal && this.diagonal < 1.5 * undoList[i].diagonal)
+              {
+                if (undoList[i].previous === null)
+                {
+                  this.next = undoList[i]
+                  undoList[i].previous = this
+                  let temp = eqns.findIndex((c) => {return c.firstChar === undoList[i]})
+                  eqns[temp].firstChar = this
+                  break;
+                }
+              }
+            }
+            else if (angle < 2.67 && angle > 2.04)
+            {
+              if (this.diagonal > 0.3 * undoList[i].diagonal && this.diagonal < undoList[i].diagonal)
+              {
+                if (undoList[i].next === null)
+                {
+                  this.previous = undoList[i]
+                  undoList[i].next = this
+                  this.prefix = "^("
+                  break;
+                }
+              }
+            }
+          }
+          else if (opercent > 0.35)
+          {
+            invalidChars.push(this)
+            return false;
+          }
+        }
+      }
+
+      return true
+    }
+  }
+
+  class Equation
+  {
+    constructor(char, topLeft, bottomRight)
+    {
+      this.firstChar = char
+      this.topLeft = topLeft
+      this.bottomRight = bottomRight
+    }
+  }
+
   const [gridState, setGridState] = useState(true);
   const [drawState, setDrawState] = useState(true);
   const [scale, setScale] = useState(1);
@@ -27,21 +209,22 @@ function App() {
   const undoButton = useRef(0);
   const redoButton = useRef(0);
   const hiddenCanvas = useRef(0);
+  const boundBoxCanvas = useRef(0);
 
-  var pen_color = "white";
-  var isGrid = false;
+  let pen_color = "white";
+  let isGrid = false;
 
   useEffect(() => {
     const context = grid.current.getContext("2d");
     const padContext = pad.current.getContext("2d");
 
-    var pointArray = [];
-    var interval = null;
-    var isWriting = false;
-    var maxX = 0;
-    var maxY = 0;
-    var minX = 0;
-    var minY = 0;
+    let pointArray = [];
+    let interval = null;
+    let isWriting = false;
+    let maxX = 0;
+    let maxY = 0;
+    let minX = 0;
+    let minY = 0;
 
     pad.current.addEventListener('mousedown', writeStart);
     pad.current.addEventListener('mousemove', writing);
@@ -116,16 +299,31 @@ function App() {
       {
         event.preventDefault()
         isWriting = false;
+
         setTimeout(() => {
           clearInterval(interval)
         }, 17)
         
-        undoList.push(parr)
+        let temp = penSize / 2
+        let char = new character({x: minX - temp, y: minY - temp}, {x: maxX + temp, y: maxY + temp}, parr)
+        
+
+        if (char.findRelative() && (undoList.length === 0 || undoList[undoList.length - 1] === 0 || char.next === char.previous))
+        {
+          let eqn = new Equation(char, char.topLeft, char.bottomRight)
+          eqns.push(eqn)
+        }
+
+        undoList.push(char)
         redoList.length = 0
-        ask(parr, maxX, minX, maxY, minY)
+
+        ask(char)
         parr = []
+
+        zeroPos.slice(safePos + 1)
         setClear(false);
         setUndos(true);
+        setRedos(false)
       }
       event.stopImmediatePropagation();
     }
@@ -237,11 +435,20 @@ function App() {
   function clear()
   {
     const ctx = pad.current.getContext("2d");
-    setClear(true)
-    ctx.clearRect(0, 0, 2000, 2000)
-    undoList.push(0)
     redoList.length = 0
+    zeroPos.slice(safePos + 1)
     setRedos(false)
+
+    setClear(true)
+    ctx.beginPath()
+    ctx.clearRect(0, 0, 2000, 2000)
+    ctx.stroke()
+
+    undoList.push(0)
+    zeroPos.push(undoList.length)
+    safePos = zeroPos.length - 1
+
+    processPage()
   }
 
   function rangeUpdate()
@@ -250,6 +457,7 @@ function App() {
     setScale(temp)
     grid.current.style.transform = `scale(${temp})`
     pad.current.style.transform = `scale(${temp})`
+    boundBoxCanvas.current.style.transform = `scale(${temp})`
   }
 
   function getWriteCoordinates(event) {
@@ -271,6 +479,33 @@ function App() {
     {
       setUndos(false)
     }
+
+    if (redoList[redoList.length - 1] === 0)
+    {
+      safePos--
+    }
+
+    let temp = redoList[redoList.length - 1]
+    
+    if (temp !== null && temp !== 0)
+    {
+      if (temp.next !== null)
+      {
+        temp.next.previous = null
+      }
+  
+      if (temp.previous !== null)
+      {
+        temp.previous.next = null
+      }
+      else if (!invalidChars.includes(temp))
+      {
+        let local = eqns.findIndex((c) => {return c.firstChar === temp})
+        eqns[local].firstChar = temp.next
+      }
+    }
+
+    processPage()
   }
 
   function redo()
@@ -282,6 +517,33 @@ function App() {
     {
       setRedos(false)
     }
+
+    if (undoList[undoList.length - 1] === 0)
+    {
+      safePos++
+    }
+
+    let temp = undoList[undoList.length - 1]
+
+    if ((temp !== null) && (temp !== 0))
+    {
+      if (temp.next != null)
+      {
+        temp.next.previous = temp
+      }
+  
+      if (temp.previous != null)
+      {
+        temp.previous.next = temp
+      }
+      else if (!invalidChars.includes(temp))
+      {
+        let local = eqns.findIndex((c) => {return c.firstChar === temp.next})
+        eqns[local].firstChar = temp
+      }
+    }
+
+    processPage()
   }
 
   function jumpState(from, to)
@@ -298,7 +560,9 @@ function App() {
   function Redraw()
   {
     let ctx = pad.current.getContext("2d")
+    ctx.beginPath()
     ctx.clearRect(0, 0, 2000, 2000)
+    ctx.stroke()
 
     ctx.lineWidth = penSize + 2;
     ctx.strokeStyle = pen_color;
@@ -317,16 +581,17 @@ function App() {
 
         if (temp)
         {
+          let points = temp.points
           empty = false
           setClear(false)
 
           ctx.beginPath()
-          ctx.moveTo(temp[0].x, temp[0].y)
+          ctx.moveTo(points[0].x, points[0].y)
     
-          while (temp.length > 0)
+          while (points.length > 0)
           {
-            ctx.lineTo(temp[0].x, temp[0].y)
-            temp = temp.slice(1)
+            ctx.lineTo(points[0].x, points[0].y)
+            points = points.slice(1)
           }
     
           ctx.stroke()
@@ -349,13 +614,18 @@ function App() {
     }
   }
 
-  function ask(points, maxX, minX, maxY, minY)
+  function ask(char)
   {
-    const temp = penSize * 2
+    let maxX = char.bottomRight.x
+    let maxY = char.bottomRight.y
+    let minX = char.topLeft.x
+    let minY = char.topLeft.y
+    let points = char.points
 
     const ctx = hiddenCanvas.current.getContext("2d")
-    hiddenCanvas.current.height = maxY - minY + temp
-    hiddenCanvas.current.width = maxX - minX + temp
+
+    hiddenCanvas.current.height = maxY - minY
+    hiddenCanvas.current.width = maxX - minX
 
     ctx.lineWidth = penSize + 2;
     ctx.strokeStyle = pen_color;
@@ -363,11 +633,11 @@ function App() {
     ctx.lineCap = "round";
     
     ctx.beginPath()
-    ctx.moveTo(points[0].x - minX + penSize, points[0].y - minY + penSize)
+    ctx.moveTo(points[0].x - minX, points[0].y - minY)
     
     while (points.length > 0)
     {
-      ctx.lineTo(points[0].x - minX + penSize, points[0].y - minY + penSize)
+      ctx.lineTo(points[0].x - minX, points[0].y - minY)
       points = points.slice(1)
     }
 
@@ -386,7 +656,46 @@ function App() {
       }
     }
 
-    fetch("http://127.0.0.1:5000/recognise", options).then((response) => response.json()).then((data) => {console.log(data)})
+    fetch("http://127.0.0.1:5000/recognise", options)
+    .then((response) => response.json())
+    .then((data) => {
+      char.setValue(data)
+      processPage()
+    })
+  }
+
+  function processPage()
+  {
+    let temp = boundBoxCanvas.current.getContext("2d")
+    temp.beginPath()
+    temp.clearRect(0, 0, 2000, 2000)
+    temp.stroke()
+    
+    for (let i = 0; i < eqns.length; i++)
+    {
+      if (undoList.includes(eqns[i].firstChar) && undoList.indexOf(eqns[i].firstChar) >= zeroPos[safePos])
+      {
+        eqns[i].firstChar.traverse('')
+      }
+    }
+
+    for (let i = 0; i < invalidChars.length; i++)
+    {
+      if (undoList.includes(invalidChars[i]) && (undoList.indexOf(invalidChars[i]) >= zeroPos[safePos]))
+      {
+        boundBox('red', invalidChars[i].topLeft, invalidChars[i].bottomRight)
+      }
+    }
+  }
+
+  function boundBox(color, topLeft, bottomRight)
+  {
+    const ctx = boundBoxCanvas.current.getContext("2d");
+    ctx.lineWidth = 1
+    ctx.strokeStyle = color
+    ctx.beginPath();
+    ctx.rect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+    ctx.stroke();
   }
 
   return (
@@ -416,6 +725,7 @@ function App() {
       <div className='workSpace' ref={workSpace}>
         <canvas ref={pad} id="pad" width="2000" height="2000"></canvas>
         <canvas ref={grid} width="2000" height="2000"></canvas>
+        <canvas ref={boundBoxCanvas} width="2000" height="2000" id="boundBoxCanvas"></canvas>
         <canvas ref={hiddenCanvas} id="hidden"></canvas>
       </div>
     </div>
