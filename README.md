@@ -18,3 +18,5 @@
 
 ## Screenshots
 <img src="./Screenshots/Screenshot 2024-07-31 141227.png" style=""></img>
+<img src="./Screenshots/Screenshot 2024-08-03 122119.png" style=""></img>
+<img src="./Screenshots/Screenshot 2024-08-03 122214.png" style=""></img>
