@@ -218,3 +218,13 @@
   visibility: hidden;
   pointer-events: none;
 }
+
+canvas
+{
+  font-family: inkfree;
+}
+
+@font-face {
+  font-family: inkfree;
+  src: url(../public/Inkfree.ttf);
+}

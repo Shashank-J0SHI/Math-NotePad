@@ -68,14 +68,14 @@ function App() {
       
       let a = bottomRight.x - topLeft.x
       let b = bottomRight.y - topLeft.y
-      this.diagonal = Math.sqrt(a*a + b*b) * 0.8
+      this.diagonal = Math.sqrt(a*a + b*b) * 0.85
       this.center = {x: (bottomRight.x + topLeft.x) / 2, y: (bottomRight.y + topLeft.y) / 2}
       this.points = points
-      this.index = null
       this.value = null
       this.next = null
       this.previous = null
       this.prefix = null
+      this.over = [this]
     }
 
     setValue(data)
@@ -83,9 +83,32 @@ function App() {
       this.value = data
     }
 
+    setPoints(br = this.bottomRight, tl = this.topLeft)
+    {
+      this.topLeft = tl;
+      this.bottomRight = br;
+      this.center = {x: (br.x + tl.x) / 2, y: (br.y + tl.y) / 2};
+      let a = br.x - tl.x
+      let b = br.y - tl.y
+      this.diagonal = Math.sqrt(a*a + b*b) * 0.85;
+    }
+
+    resize()
+    {
+      let localTemp = (this.bottomRight.x - this.topLeft.x) / (this.bottomRight.y - this.topLeft.y);
+      if (localTemp == 1+-0.2)
+      {
+        this.setPoints({x: Math.max(this.bottomRight.x, this.center.x + 28), y: Math.max(this.bottomRight.y, this.center.y + 24)}, {x: Math.min(this.topLeft.x, this.center.x - 28), y: Math.min(this.topLeft.y, this.center.y - 28)})
+      }
+      else if (localTemp > 2 || localTemp < 0.5)
+      {
+        this.setPoints({x: this.bottomRight.x, y: this.bottomRight.y + 28}, {x: this.topLeft.x, y: this.topLeft.y - 28})
+      }
+    }
+
     traverse(string)
     {
-      if (this.value === null)
+      if (this.value === '')
       {
         boundBox("red", this.topLeft, this.bottomRight);
       }
@@ -94,28 +117,42 @@ function App() {
         boundBox("yellow", this.topLeft, this.bottomRight);
       }
 
-      if (this.prefix !== null)
-      {
-        string += this.prefix
-      }
+      if (this.prefix !== null) string += this.prefix
 
-      string = string + this.value
-      
+      string = string + this.value;
+
       if (this.next !== null)
       {
-        this.next.traverse(string)
+        this.next.traverse(string);
+      }
+      else if (this.value === '=')
+      {
+        let prev = this.previous;
+        let fsize = prev.bottomRight.y - prev.topLeft.y;
+        let y = this.center.y;  
+        let base = "middle";
+        let color = "green";
+        let value = eqnSolver(string);
+        
+        if (value === "invalid")
+        {
+          color = "red";
+          fsize *= 0.7;
+        }
+
+        outputBox(this.center.x + (this.diagonal * 0.7), y, fsize, value, color, base);
       }
       else
       {
-        console.log(string)
+        console.log(string);
       }
     }
 
-    findRelative()
+    async findRelative()
     {
       for (let i = undoList.length - 1; (i >= zeroPos[safePos]) && (undoList[i] !== 0); i--)
       {
-        if (undoList[i] !== this && (!invalidChars.includes(undoList[i])))
+        if (undoList[i] !== this && (!invalidChars.includes(undoList[i])) && undoList[i].prefix !== "skip")
         {
           let a = undoList[i].center.x - this.center.x  
           let b = undoList[i].center.y - this.center.y
@@ -168,12 +205,27 @@ function App() {
           }
           else if (opercent > 0.35)
           {
-            invalidChars.push(this)
+            let temp = await createImg(undoList[i].over.concat([this]), "recognise")
+            
+            if (temp != '')
+            {
+              this.setValue(undoList[i].value);
+              undoList[i].setValue(temp);
+              undoList[i].over.push(this);
+              this.previous = undoList[i];
+              this.prefix = "skip";
+            }
+            else
+            {
+              invalidChars.push(this);
+            }
+            
             return false;
           }
         }
       }
-
+      
+      this.setValue(await createImg([this], "recognise"))
       return true
     }
   }
@@ -183,8 +235,7 @@ function App() {
     constructor(char, topLeft, bottomRight)
     {
       this.firstChar = char
-      this.topLeft = topLeft
-      this.bottomRight = bottomRight
+      this.solution = null;
     }
   }
 
@@ -293,7 +344,7 @@ function App() {
       event.stopImmediatePropagation();
     }
 
-    function writeEnd(event)
+    async function writeEnd(event)
     {
       if (isWriting)
       {
@@ -304,20 +355,25 @@ function App() {
           clearInterval(interval)
         }, 17)
         
+        console.time("time")
         let temp = penSize / 2
-        let char = new character({x: minX - temp, y: minY - temp}, {x: maxX + temp, y: maxY + temp}, parr)
-        
+        let char = new character({x: Math.max(minX - temp), y: minY - temp}, {x: maxX + temp, y: maxY + temp}, parr)
+        char.resize();
 
-        if (char.findRelative() && (undoList.length === 0 || undoList[undoList.length - 1] === 0 || char.next === char.previous))
+        if (await char.findRelative())
         {
-          let eqn = new Equation(char, char.topLeft, char.bottomRight)
-          eqns.push(eqn)
+          if ((undoList.length === 0 || undoList[undoList.length - 1] === 0 || char.next === char.previous))
+          {
+            let eqn = new Equation(char, char.topLeft, char.bottomRight)
+            eqns.push(eqn)
+          }
         }
+        console.timeEnd("time");
 
         undoList.push(char)
         redoList.length = 0
 
-        ask(char)
+        processPage()
         parr = []
 
         zeroPos.slice(safePos + 1)
@@ -434,6 +490,7 @@ function App() {
 
   function clear()
   {
+    console.time("time")
     const ctx = pad.current.getContext("2d");
     redoList.length = 0
     zeroPos.slice(safePos + 1)
@@ -449,6 +506,7 @@ function App() {
     safePos = zeroPos.length - 1
 
     processPage()
+    console.timeEnd("time")
   }
 
   function rangeUpdate()
@@ -472,21 +530,37 @@ function App() {
 
   function undo()
   {
+    console.time("time")
     jumpState(undoList, redoList)
     setRedos(true)
+
+    let temp = redoList[redoList.length - 1]
 
     if (!undoList.length)
     {
       setUndos(false)
     }
 
-    if (redoList[redoList.length - 1] === 0)
+    if (temp.prefix === "skip")
+    {
+      if (undoList.length > 0)
+      {
+        let ul = undoList[undoList.length - 1];
+        let tv = ul.value;
+        let ttl = ul.topLeft;
+        let tbr = ul.bottomRight
+        ul.setValue(temp.value)
+        ul.setPoints(temp.bottomRight, temp.topLeft);
+        temp.setValue(tv);
+        temp.setPoints(tbr, ttl);
+      }
+    }
+
+    if (temp === 0)
     {
       safePos--
     }
 
-    let temp = redoList[redoList.length - 1]
-    
     if (temp !== null && temp !== 0)
     {
       if (temp.next !== null)
@@ -496,6 +570,7 @@ function App() {
   
       if (temp.previous !== null)
       {
+        if (temp.prefix === "skip") temp.previous.over.pop();
         temp.previous.next = null
       }
       else if (!invalidChars.includes(temp))
@@ -506,35 +581,53 @@ function App() {
     }
 
     processPage()
+    console.timeEnd("time")
   }
 
   function redo()
   {
+    console.time("time")
     jumpState(redoList, undoList)
     setUndos(true)
+
+    let temp = undoList[undoList.length - 1]
 
     if (!redoList.length)
     {
       setRedos(false)
     }
 
-    if (undoList[undoList.length - 1] === 0)
+    if (temp.prefix === "skip")
+    {
+      if (undoList.length - 2 >= 0)
+      {
+        let ul = undoList[undoList.length - 2];
+        let tv = ul.value;
+        let ttl = ul.topLeft;
+        let tbr = ul.bottomRight
+        ul.setValue(temp.value)
+        ul.setPoints(temp.bottomRight, temp.topLeft);
+        temp.setValue(tv);
+        temp.setPoints(tbr, ttl);
+      }
+    }
+
+    if (temp === 0)
     {
       safePos++
     }
 
-    let temp = undoList[undoList.length - 1]
-
     if ((temp !== null) && (temp !== 0))
     {
-      if (temp.next != null)
+      if (temp.next !== null)
       {
         temp.next.previous = temp
       }
   
-      if (temp.previous != null)
+      if (temp.previous !== null)
       {
-        temp.previous.next = temp
+        if (temp.prefix !== "skip") temp.previous.next = temp;
+        else temp.previous.over.push(temp);
       }
       else if (!invalidChars.includes(temp))
       {
@@ -544,6 +637,7 @@ function App() {
     }
 
     processPage()
+    console.timeEnd("time")
   }
 
   function jumpState(from, to)
@@ -614,39 +708,67 @@ function App() {
     }
   }
 
-  function ask(char)
+  async function createImg(char, func)
   {
-    let maxX = char.bottomRight.x
-    let maxY = char.bottomRight.y
-    let minX = char.topLeft.x
-    let minY = char.topLeft.y
-    let points = char.points
+    let maxX = char[0].bottomRight.x
+    let maxY = char[0].bottomRight.y
+    let minX = char[0].topLeft.x
+    let minY = char[0].topLeft.y
+    let len = char.length;
+
+    for (let c = 0; c < len; c++)
+    {
+      maxX = Math.max(maxX, char[c].bottomRight.x)
+      maxY = Math.max(maxY, char[c].bottomRight.y)
+      minX = Math.min(minX, char[c].topLeft.x)
+      minY = Math.min(minY, char[c].topLeft.y)
+    }
 
     const ctx = hiddenCanvas.current.getContext("2d")
 
     hiddenCanvas.current.height = maxY - minY
     hiddenCanvas.current.width = maxX - minX
 
-    ctx.lineWidth = penSize + 2;
+    let a = maxX - minX
+    let b = maxY - minY
+    let diagonal = Math.sqrt(a*a + b*b) * 0.85
+
+    ctx.lineWidth = Math.max(diagonal * 0.028, Math.min((maxX - minX) / 30, (maxY - minY) / 30), 1.25)
     ctx.strokeStyle = pen_color;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
-    
-    ctx.beginPath()
-    ctx.moveTo(points[0].x - minX, points[0].y - minY)
-    
-    while (points.length > 0)
-    {
-      ctx.lineTo(points[0].x - minX, points[0].y - minY)
-      points = points.slice(1)
-    }
 
-    ctx.stroke()
+    for (let c = 0; c < len; c++)
+    {
+      let points = char[c].points
+      ctx.beginPath()
+      if (points.length > 0) ctx.moveTo(points[0].x - minX, points[0].y - minY)
+      
+      while (points.length > 0)
+      {
+        ctx.lineTo(points[0].x - minX, points[0].y - minY)
+        points = points.slice(1)
+      }
+
+      ctx.stroke()
+    }
 
     let body = {
       "content" : hiddenCanvas.current.toDataURL("image/jpeg")
     }
 
+    let temp = await ask(body, func)
+    if (temp != '')
+    {
+      char[len - 1].setPoints(char[0].bottomRight, char[0].topLeft);
+      char[0].setPoints({x: maxX, y: maxY}, {x: minX, y: minY});
+    }
+
+    return temp;
+  }
+
+  async function ask(body, func)
+  {
     const options = {
       method: "POST",
       body: JSON.stringify(body),
@@ -656,12 +778,13 @@ function App() {
       }
     }
 
-    fetch("http://127.0.0.1:5000/recognise", options)
+    let result = await fetch(`http://127.0.0.1:5000/${func}`, options)
     .then((response) => response.json())
     .then((data) => {
-      char.setValue(data)
-      processPage()
+      return data;
     })
+
+    return result;
   }
 
   function processPage()
@@ -698,6 +821,137 @@ function App() {
     ctx.stroke();
   }
 
+  function type(char)
+  {
+    switch(char)
+    {
+      case '0':
+      case '1':
+      case '2':
+      case '3':
+      case '4':
+      case '5':
+      case '6':
+      case '7':
+      case '8':
+      case '9':
+      {
+        return 0;
+      }
+      case '+':
+      case '-':
+      {
+        return 1;
+      }
+      default:
+      {
+        return 2;
+      }
+    }
+  }
+
+  function eqnSolver(eqn)
+  {
+    let stack = [];
+    let prev = 5;
+    let current = 5;
+    
+    for (let i = 0; i < eqn.length; i++)
+    {
+      if (eqn[i] === '=') break;
+      current = type(eqn[i]);
+
+      switch(prev)
+      {
+        case 5:
+        {
+          switch(current)
+          {
+            case 0:
+            {
+              stack.push(eqn[i]);
+              prev = 0;
+              break;
+            }
+            case 1:
+            {
+              stack.push(eqn[i]);
+              prev = 1;
+              break;
+            }
+            default: return "invalid";
+          }
+          break;
+        }
+        case 0:
+        {
+          switch(current)
+          {
+            case 0:
+            {
+              stack[stack.length - 1] += eqn[i];
+              prev = 0;
+              break;
+            }
+            case 1:
+            {
+              stack.push(eqn[i]);
+              prev = 1;
+              break; 
+            }
+            default: return "invalid";
+          }
+          break;
+        }
+        case 1:
+        {
+          if (current !== 0) return "invalid";
+          else
+          {
+            stack.push(eqn[i]);
+            prev = 0;
+            break;
+          }
+        }
+      }
+    }
+
+    if (prev !== 0)
+    {
+      return "invalid";
+    }
+
+    let a = parseInt(stack[stack.length - 1]);
+    for (let i = stack.length - 2; i >= 0; i--)
+    {
+      switch(stack[i--])
+      {
+        case '+':
+        {
+          a += parseInt(stack[i]);
+          break;
+        }
+        case '-':
+        {
+          a = parseInt(stack[i]) - a;
+          break;
+        }
+        default: return "error";
+      }
+    }
+
+    return a;
+  }
+
+  function outputBox(x, y, fsize, value, color = "green", base)
+  {  
+    const ctx = pad.current.getContext("2d");
+    ctx.font = `${fsize * 1.05}px inkfree`;
+    ctx.fillStyle = color;
+    ctx.textBaseline = base;
+    ctx.fillText(`${value}`, x, y);
+  }
+
   return (
     <div className="App">
       <header>
@@ -719,7 +973,7 @@ function App() {
       </header>
 
       <div className="Sidebar">
-
+        <p style={{fontFamily: "inkfree", visibility: "hidden"}}>123</p>
       </div>
 
       <div className='workSpace' ref={workSpace}>
